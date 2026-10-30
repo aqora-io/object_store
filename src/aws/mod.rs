@@ -39,7 +39,7 @@ use http::{Method, StatusCode};
 use std::{sync::Arc, time::Duration};
 use url::Url;
 
-use crate::aws::client::{CompleteMultipartMode, PutPartPayload, RequestError, S3Client};
+pub use crate::aws::client::{CompleteMultipartMode, PutPartPayload, RequestError, S3Client};
 use crate::client::CredentialProvider;
 use crate::client::get::GetClientExt;
 use crate::client::list::{ListClient, ListClientExt};
@@ -96,6 +96,11 @@ impl std::fmt::Display for AmazonS3 {
 }
 
 impl AmazonS3 {
+    /// Returns the [`S3Client`] used by [`AmazonS3`]
+    pub fn client(&self) -> &S3Client {
+        &self.client
+    }
+
     /// Returns the [`AwsCredentialProvider`] used by [`AmazonS3`]
     pub fn credentials(&self) -> &AwsCredentialProvider {
         &self.client.config.credentials

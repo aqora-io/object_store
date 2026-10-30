@@ -14,6 +14,7 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+#![allow(missing_docs)]
 
 use crate::aws::builder::S3EncryptionHeaders;
 use crate::aws::checksum::Checksum;
@@ -139,7 +140,8 @@ impl From<Error> for crate::Error {
     }
 }
 
-pub(crate) enum PutPartPayload<'a> {
+#[derive(Debug)]
+pub enum PutPartPayload<'a> {
     Part(PutPayload),
     Copy(&'a Path),
 }
@@ -150,7 +152,8 @@ impl Default for PutPartPayload<'_> {
     }
 }
 
-pub(crate) enum CompleteMultipartMode {
+#[derive(Debug, Clone, Copy)]
+pub enum CompleteMultipartMode {
     Overwrite,
     Create,
 }
@@ -492,9 +495,9 @@ impl Request<'_> {
 }
 
 #[derive(Debug)]
-pub(crate) struct S3Client {
-    pub config: S3Config,
-    pub client: HttpClient,
+pub struct S3Client {
+    pub(crate) config: S3Config,
+    pub(crate) client: HttpClient,
 }
 
 impl S3Client {
@@ -738,7 +741,7 @@ impl S3Client {
         Ok(response.upload_id)
     }
 
-    pub(crate) async fn put_part(
+    pub async fn put_part(
         &self,
         path: &Path,
         upload_id: &MultipartId,
