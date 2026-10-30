@@ -41,7 +41,7 @@ use crate::list::{PaginatedListOptions, PaginatedListResult};
 use crate::multipart::PartId;
 use crate::{
     Attribute, Attributes, ClientOptions, GetOptions, ListResult, MultipartId, Path,
-    PutMultipartOptions, PutPayload, PutResult, Result, RetryConfig, TagSet,
+    PutMultipartOptions, PutPayload, PutResult, Result, RetryConfig, TagSet, UpdateVersion,
 };
 use async_trait::async_trait;
 use base64::Engine;
@@ -143,7 +143,16 @@ impl From<Error> for crate::Error {
 #[derive(Debug)]
 pub enum PutPartPayload<'a> {
     Part(PutPayload),
-    Copy(&'a Path),
+    Copy {
+        src: &'a Path,
+        version: Option<UpdateVersion>,
+    },
+}
+
+impl<'a> PutPartPayload<'a> {
+    pub fn copy(src: &'a Path) -> Self {
+        Self::Copy { src, version: None }
+    }
 }
 
 impl Default for PutPartPayload<'_> {
@@ -152,10 +161,11 @@ impl Default for PutPartPayload<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum CompleteMultipartMode {
     Overwrite,
     Create,
+    Update(UpdateVersion),
 }
 
 #[derive(Deserialize)]
@@ -748,7 +758,7 @@ impl S3Client {
         part_idx: usize,
         data: PutPartPayload<'_>,
     ) -> Result<PartId> {
-        let is_copy = matches!(data, PutPartPayload::Copy(_));
+        let is_copy = matches!(data, PutPartPayload::Copy { .. });
         let part = (part_idx + 1).to_string();
 
         let mut request = self
@@ -758,10 +768,20 @@ impl S3Client {
 
         request = match data {
             PutPartPayload::Part(payload) => request.with_payload(payload)?,
-            PutPartPayload::Copy(path) => request.header(
-                "x-amz-copy-source",
-                &format!("{}/{}", self.config.bucket, encode_path(path)),
-            ),
+            PutPartPayload::Copy { src, version } => {
+                request = request.header(
+                    "x-amz-copy-source",
+                    &format!("{}/{}", self.config.bucket, encode_path(src)),
+                );
+                if let Some(v) = version {
+                    let etag = v.e_tag.as_deref().ok_or_else(|| crate::Error::Generic {
+                        store: STORE,
+                        source: "ETag required for conditional put".to_string().into(),
+                    })?;
+                    request = request.header("if-match", etag);
+                }
+                request
+            }
         };
 
         if self
@@ -827,7 +847,7 @@ impl S3Client {
         Ok(())
     }
 
-    pub(crate) async fn complete_multipart(
+    pub async fn complete_multipart(
         &self,
         location: &Path,
         upload_id: &str,
@@ -866,9 +886,16 @@ impl S3Client {
             .body(body)
             .with_aws_sigv4(authorizer, None)?;
 
-        let request = match mode {
+        let request = match &mode {
             CompleteMultipartMode::Overwrite => request,
             CompleteMultipartMode::Create => request.header("If-None-Match", "*"),
+            CompleteMultipartMode::Update(v) => {
+                let etag = v.e_tag.as_deref().ok_or_else(|| crate::Error::Generic {
+                    store: STORE,
+                    source: "ETag required for conditional put".to_string().into(),
+                })?;
+                request.header("If-Match", etag)
+            }
         };
 
         let response = request

@@ -437,7 +437,7 @@ impl ObjectStore for AmazonS3 {
                         let res = async {
                             let part_id = self
                                 .client
-                                .put_part(to, &upload_id, 0, PutPartPayload::Copy(from))
+                                .put_part(to, &upload_id, 0, PutPartPayload::copy(from))
                                 .await?;
                             match self
                                 .client
